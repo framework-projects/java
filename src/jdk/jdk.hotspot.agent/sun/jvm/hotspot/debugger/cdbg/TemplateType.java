@@ -1,0 +1,31 @@
+/*
+ * Copyright (c) 2001, Oracle and/or its affiliates. All rights reserved.
+ * ORACLE PROPRIETARY/CONFIDENTIAL. Use is subject to license terms.
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ */
+
+package sun.jvm.hotspot.debugger.cdbg;
+
+public interface TemplateType extends Type {
+  public int  getNumTemplateArguments();
+  public Type instantiate(Type[] arguments);
+  public Type instantiate(List/*<Type>*/ arguments);
+}

@@ -1,0 +1,59 @@
+/*
+ * Copyright (c) 2003, 2017, Oracle and/or its affiliates. All rights reserved.
+ * ORACLE PROPRIETARY/CONFIDENTIAL. Use is subject to license terms.
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ */
+
+package sun.jvm.hotspot.memory;
+
+public class DictionaryEntry extends sun.jvm.hotspot.utilities.HashtableEntry {
+  static {
+    VM.registerVMInitializedObserver(new Observer() {
+        public void update(Observable o, Object data) {
+          initialize(VM.getVM().getTypeDataBase());
+        }
+      });
+  }
+
+  private static synchronized void initialize(TypeDataBase db) {
+    Type type = db.lookupType("DictionaryEntry");
+  }
+
+  public Klass klass() {
+    return (Klass)Metadata.instantiateWrapperFor(literalValue());
+  }
+
+  public DictionaryEntry(Address addr) {
+    super(addr);
+  }
+
+  public boolean equals(Symbol className) {
+    InstanceKlass ik = (InstanceKlass) klass();
+    return ik.getName().equals(className);
+  }
+
+  /* covariant return type :-(
+  public DictionaryEntry next() {
+    return (DictionaryEntry) super.next();
+  }
+  For now, let the caller cast it ..
+  */
+}

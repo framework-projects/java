@@ -1,0 +1,55 @@
+/*
+ * Copyright (c) 2009, 2018, Oracle and/or its affiliates. All rights reserved.
+ * ORACLE PROPRIETARY/CONFIDENTIAL. Use is subject to license terms.
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ */
+
+
+package org.graalvm.compiler.jtt.optimize;
+
+import org.graalvm.compiler.jtt.JTTTest;
+import org.junit.Test;
+
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+
+/*
+ */
+public class NCE_FlowSensitive05 extends JTTTest {
+
+    private static PrintStream ps = new PrintStream(new ByteArrayOutputStream());
+
+    public static String test(Object arg) {
+
+        // An artificial loop to trigger iterative NCE.
+        while (arg != null) {
+            ps.println(arg);
+        }
+
+        // The upcast must still include the null check.
+        return (String) arg;
+    }
+
+    @Test
+    public void run0() throws Throwable {
+        runTest("test", (Object) null);
+    }
+
+}

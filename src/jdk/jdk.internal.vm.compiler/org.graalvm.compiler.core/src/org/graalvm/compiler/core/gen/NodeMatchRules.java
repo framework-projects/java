@@ -1,0 +1,108 @@
+/*
+ * Copyright (c) 2009, 2018, Oracle and/or its affiliates. All rights reserved.
+ * ORACLE PROPRIETARY/CONFIDENTIAL. Use is subject to license terms.
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ */
+
+
+package org.graalvm.compiler.core.gen;
+
+import jdk.vm.ci.meta.Value;
+import org.graalvm.compiler.core.match.MatchableNode;
+import org.graalvm.compiler.graph.Node;
+import org.graalvm.compiler.lir.LIRFrameState;
+import org.graalvm.compiler.lir.LIRInstruction;
+import org.graalvm.compiler.lir.LabelRef;
+import org.graalvm.compiler.lir.gen.LIRGeneratorTool;
+import org.graalvm.compiler.nodes.*;
+import org.graalvm.compiler.nodes.calc.*;
+import org.graalvm.compiler.nodes.java.LogicCompareAndSwapNode;
+import org.graalvm.compiler.nodes.java.ValueCompareAndSwapNode;
+import org.graalvm.compiler.nodes.memory.FloatingReadNode;
+import org.graalvm.compiler.nodes.memory.ReadNode;
+import org.graalvm.compiler.nodes.memory.WriteNode;
+
+@MatchableNode(nodeClass = ConstantNode.class, shareable = true, ignoresSideEffects = true)
+@MatchableNode(nodeClass = FloatConvertNode.class, inputs = {"value"}, ignoresSideEffects = true)
+@MatchableNode(nodeClass = FloatingReadNode.class, inputs = {"address"})
+@MatchableNode(nodeClass = IfNode.class, inputs = {"condition"})
+@MatchableNode(nodeClass = SubNode.class, inputs = {"x", "y"}, ignoresSideEffects = true)
+@MatchableNode(nodeClass = LeftShiftNode.class, inputs = {"x", "y"}, ignoresSideEffects = true)
+@MatchableNode(nodeClass = NarrowNode.class, inputs = {"value"}, ignoresSideEffects = true)
+@MatchableNode(nodeClass = ReadNode.class, inputs = {"address"})
+@MatchableNode(nodeClass = ReinterpretNode.class, inputs = {"value"}, ignoresSideEffects = true)
+@MatchableNode(nodeClass = SignExtendNode.class, inputs = {"value"}, ignoresSideEffects = true)
+@MatchableNode(nodeClass = UnsignedRightShiftNode.class, inputs = {"x", "y"}, ignoresSideEffects = true)
+@MatchableNode(nodeClass = WriteNode.class, inputs = {"address", "value"})
+@MatchableNode(nodeClass = ZeroExtendNode.class, inputs = {"value"}, ignoresSideEffects = true)
+@MatchableNode(nodeClass = AndNode.class, inputs = {"x", "y"}, commutative = true, ignoresSideEffects = true)
+@MatchableNode(nodeClass = NegateNode.class, inputs = {"value"}, ignoresSideEffects = true)
+@MatchableNode(nodeClass = NotNode.class, inputs = {"value"}, ignoresSideEffects = true)
+@MatchableNode(nodeClass = FloatEqualsNode.class, inputs = {"x", "y"}, commutative = true, ignoresSideEffects = true)
+@MatchableNode(nodeClass = FloatLessThanNode.class, inputs = {"x", "y"}, commutative = true, ignoresSideEffects = true)
+@MatchableNode(nodeClass = PointerEqualsNode.class, inputs = {"x", "y"}, commutative = true, ignoresSideEffects = true)
+@MatchableNode(nodeClass = AddNode.class, inputs = {"x", "y"}, commutative = true, ignoresSideEffects = true)
+@MatchableNode(nodeClass = IntegerBelowNode.class, inputs = {"x", "y"}, commutative = true, ignoresSideEffects = true)
+@MatchableNode(nodeClass = IntegerEqualsNode.class, inputs = {"x", "y"}, commutative = true, ignoresSideEffects = true)
+@MatchableNode(nodeClass = IntegerLessThanNode.class, inputs = {"x", "y"}, commutative = true, ignoresSideEffects = true)
+@MatchableNode(nodeClass = MulNode.class, inputs = {"x", "y"}, commutative = true, ignoresSideEffects = true)
+@MatchableNode(nodeClass = IntegerTestNode.class, inputs = {"x", "y"}, commutative = true, ignoresSideEffects = true)
+@MatchableNode(nodeClass = ObjectEqualsNode.class, inputs = {"x", "y"}, commutative = true, ignoresSideEffects = true)
+@MatchableNode(nodeClass = OrNode.class, inputs = {"x", "y"}, commutative = true, ignoresSideEffects = true)
+@MatchableNode(nodeClass = XorNode.class, inputs = {"x", "y"}, commutative = true, ignoresSideEffects = true)
+@MatchableNode(nodeClass = PiNode.class, inputs = {"object"}, ignoresSideEffects = true)
+@MatchableNode(nodeClass = LogicCompareAndSwapNode.class, inputs = {"address", "expectedValue", "newValue"})
+@MatchableNode(nodeClass = ValueCompareAndSwapNode.class, inputs = {"address", "expectedValue", "newValue"})
+@MatchableNode(nodeClass = RightShiftNode.class, inputs = {"x", "y"}, ignoresSideEffects = true)
+public abstract class NodeMatchRules {
+
+    NodeLIRBuilder lirBuilder;
+    protected final LIRGeneratorTool gen;
+
+    protected NodeMatchRules(LIRGeneratorTool gen) {
+        this.gen = gen;
+    }
+
+    protected LIRGeneratorTool getLIRGeneratorTool() {
+        return gen;
+    }
+
+    /*
+     * For now we do not want to expose the full lirBuilder to subclasses, so we delegate the few
+     * methods that are actually needed. If the list grows too long, exposing lirBuilder might be
+     * the better approach.
+     */
+
+    protected final Value operand(Node node) {
+        return lirBuilder.operand(node);
+    }
+
+    protected final LIRFrameState state(DeoptimizingNode deopt) {
+        return lirBuilder.state(deopt);
+    }
+
+    protected final LabelRef getLIRBlock(FixedNode b) {
+        return lirBuilder.getLIRBlock(b);
+    }
+
+    protected final void append(LIRInstruction op) {
+        lirBuilder.append(op);
+    }
+}

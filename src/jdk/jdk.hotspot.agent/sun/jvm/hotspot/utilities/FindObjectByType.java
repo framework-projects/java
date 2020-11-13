@@ -1,0 +1,49 @@
+/*
+ * Copyright (c) 2000, 2005, Oracle and/or its affiliates. All rights reserved.
+ * ORACLE PROPRIETARY/CONFIDENTIAL. Use is subject to license terms.
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ */
+
+package sun.jvm.hotspot.utilities;
+
+public class FindObjectByType implements HeapVisitor {
+  private Klass type;
+  private List results = new ArrayList();
+
+  public FindObjectByType(Klass type) {
+    this.type = type;
+  }
+
+  /** Returns a List of Oops */
+  public List getResults() {
+    return results;
+  }
+
+  public void prologue(long size) {}
+  public void epilogue()          {}
+
+  public boolean doObj(Oop obj) {
+    if (obj.getKlass().equals(type)) {
+      results.add(obj);
+    }
+        return false;
+  }
+}
