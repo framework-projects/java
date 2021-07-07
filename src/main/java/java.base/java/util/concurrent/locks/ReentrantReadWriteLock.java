@@ -413,14 +413,21 @@ public class ReentrantReadWriteLock
 
         @ReservedStackAccess
         protected final boolean tryReleaseShared(int unused) {
+            // 获取当前需要释放共享锁的线程
             Thread current = Thread.currentThread();
             if (firstReader == current) {
+                // 如果需要释放共享锁current的线程是第一个获取锁firstReader线程
                 // assert firstReaderHoldCount > 0;
                 if (firstReaderHoldCount == 1)
+                    // 第一个获取锁firstReader线程获取锁的次数firstReaderCount为1，则设置获取锁firstReader线程为null
                     firstReader = null;
                 else
+                    /* 如果第一个获取锁firstReader线程获取锁的次数firstReaderCount不为1，也就是大于1时，
+                     * 则将获取锁firstReader线程获取锁的次数firstReader减1
+                     */
                     firstReaderHoldCount--;
             } else {
+                // 获取HoldCounter对象并且更新当前线程获取锁的信息
                 HoldCounter rh = cachedHoldCounter;
                 if (rh == null ||
                     rh.tid != LockSupport.getThreadId(current))
@@ -434,8 +441,11 @@ public class ReentrantReadWriteLock
                 --rh.count;
             }
             for (;;) {
+                // 获取锁的状态
                 int c = getState();
+                // 获取锁的次数减1
                 int nextc = c - SHARED_UNIT;
+                // 通过CAS函数更新锁的状态
                 if (compareAndSetState(c, nextc))
                     // Releasing the read lock has no effect on readers,
                     // but it may allow waiting writers to proceed if
@@ -467,26 +477,37 @@ public class ReentrantReadWriteLock
              *    saturated, chain to version with full retry loop.
              */
             Thread current = Thread.currentThread();
+            // 获取锁的状态
             int c = getState();
             if (exclusiveCount(c) != 0 &&
                 getExclusiveOwnerThread() != current)
+                // 如果锁是互斥锁，并且获取锁的线程不是当前线程则返回-1
                 return -1;
+            // 获取读取锁的共享计数
             int r = sharedCount(c);
             if (!readerShouldBlock() &&
                 r < MAX_COUNT &&
                 compareAndSetState(c, c + SHARED_UNIT)) {
+                /*
+                 * 如果不需要阻塞等待，并且读取锁的共享计数小于MAX_COUNT(65535)
+                 * 那么通过CAS函数获取共享锁锁并更新锁的状态，将读取锁的共享计数增加1
+                 */
                 if (r == 0) {
+                    // 第一次获取读取锁
                     firstReader = current;
                     firstReaderHoldCount = 1;
                 } else if (firstReader == current) {
+                    // 想要获取锁的线程current是第一个获取锁firstReader的线程
                     firstReaderHoldCount++;
                 } else {
+                    // HoldCounter是用来统计当前线程获取的读取锁的次数
                     HoldCounter rh = cachedHoldCounter;
                     if (rh == null ||
                         rh.tid != LockSupport.getThreadId(current))
                         cachedHoldCounter = rh = readHolds.get();
                     else if (rh.count == 0)
                         readHolds.set(rh);
+                    // 将当前线程获取共享锁的次数增加1
                     rh.count++;
                 }
                 return 1;
@@ -507,14 +528,21 @@ public class ReentrantReadWriteLock
              */
             HoldCounter rh = null;
             for (;;) {
+                // 获取锁的状态
                 int c = getState();
                 if (exclusiveCount(c) != 0) {
                     if (getExclusiveOwnerThread() != current)
+                        // 如果锁是互斥锁，并且获取锁的不是当前线程，就返回-1
                         return -1;
                     // else we hold the exclusive lock; blocking here
                     // would cause deadlock.
                 } else if (readerShouldBlock()) {
                     // Make sure we're not acquiring read lock reentrantly
+                    /*
+                     * 如果线程需要进行阻塞等待：
+                     * - 需要阻塞等待的线程是第1个线程，就继续执行
+                     * - 需要阻塞等待的线程获取锁的次数为0，就返回-1
+                     */
                     if (firstReader == current) {
                         // assert firstReaderHoldCount > 0;
                     } else {
@@ -527,17 +555,24 @@ public class ReentrantReadWriteLock
                                     readHolds.remove();
                             }
                         }
+                        // 线程获取锁的计数为0
                         if (rh.count == 0)
                             return -1;
                     }
                 }
+                /*
+                 * 如果线程不需要进行阻塞等待：
+                 * - 获取读取锁的共享计数
+                 */
                 if (sharedCount(c) == MAX_COUNT)
                     throw new Error("Maximum lock count exceeded");
+                // 通过CAS函数获取共享锁将线程获取读取锁的次数增加1
                 if (compareAndSetState(c, c + SHARED_UNIT)) {
                     if (sharedCount(c) == 0) {
                         firstReader = current;
                         firstReaderHoldCount = 1;
                     } else if (firstReader == current) {
+                        // 如果需要获取锁的线程current是第1个获取锁的线程firstReader，就将获取读取锁的次数firstHoldCount增加1
                         firstReaderHoldCount++;
                     } else {
                         if (rh == null)
@@ -547,6 +582,7 @@ public class ReentrantReadWriteLock
                             rh = readHolds.get();
                         else if (rh.count == 0)
                             readHolds.set(rh);
+                        // 更新线程获取读取锁的共享次数，增加1
                         rh.count++;
                         cachedHoldCounter = rh; // cache for release
                     }
@@ -712,6 +748,10 @@ public class ReentrantReadWriteLock
      */
     public static class ReadLock implements Lock, java.io.Serializable {
         private static final long serialVersionUID = -5992448646407690164L;
+
+        /**
+         * ReentrantReadWriteLock中的AQS对象
+         */
         private final Sync sync;
 
         /**

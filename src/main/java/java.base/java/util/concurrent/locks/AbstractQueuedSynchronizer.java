@@ -727,19 +727,32 @@ public abstract class AbstractQueuedSynchronizer
          * fails, if so rechecking.
          */
         for (;;) {
+            // 获取CLH队列的头节点
             Node h = head;
             if (h != null && h != tail) {
+                // 如果获取的头节点不为null并且头节点不等于tail节点，就获取头节点对应的线程的状态
                 int ws = h.waitStatus;
                 if (ws == Node.SIGNAL) {
+                    /*
+                     * 如果头节点对应的线程的状态为SIGNAL状态，就说明头节点需要唤醒后继节点，头节点的下一个节点所对应的线程需要unpark()唤醒
+                     * 然后设置头节点对应的线程状态为空状态，如果设置失败，就继续一直循环设置，直到成功为止
+                     */
                     if (!h.compareAndSetWaitStatus(Node.SIGNAL, 0))
                         continue;            // loop to recheck cases
+                    // 唤醒后继节点
                     unparkSuccessor(h);
                 }
                 else if (ws == 0 &&
                          !h.compareAndSetWaitStatus(0, Node.PROPAGATE))
+                    /*
+                     * 如果头节点对应的线程状态是空状态，就设置文件点对应的线程拥有的共享锁为其余线程获取锁的空状态PROPAGATE。
+                     * 如果设置失败，就继续一直循环设置，直到成功为止
+                     */
                     continue;                // loop on failed CAS
             }
+            // 如果头节点发生改变，就继续一直循环
             if (h == head)                   // loop if head changed
+                // 如果头节点没有发生变化，就退出循环
                 break;
         }
     }
@@ -992,12 +1005,15 @@ public abstract class AbstractQueuedSynchronizer
      * @param arg the acquire argument
      */
     private void doAcquireShared(int arg) {
+        // addWaiter(Node.SHARED)：创建当前线程对应的节点，并将当前线程添加到CLH队列中
         final Node node = addWaiter(Node.SHARED);
         boolean interrupted = false;
         try {
             for (;;) {
+                // 获取当前线程的节点的前面一个节点
                 final Node p = node.predecessor();
                 if (p == head) {
+                    // 如果当前线程的节点是CLH队列的表头，就尝试获取共享锁
                     int r = tryAcquireShared(arg);
                     if (r >= 0) {
                         setHeadAndPropagate(node, r);
@@ -1005,7 +1021,9 @@ public abstract class AbstractQueuedSynchronizer
                         return;
                     }
                 }
+                // 如果当前线程的节点不是CLH队列的表头，就通过shouldParkAfterFailedAcquire()判断是否需要等待
                 if (shouldParkAfterFailedAcquire(p, node))
+                    // 如果需要等待，则通过parkAndCheckInterrupt()进行阻塞等待。在等待过程中，如果发生中断，就设置interrupted的值为true
                     interrupted |= parkAndCheckInterrupt();
             }
         } catch (Throwable t) {
