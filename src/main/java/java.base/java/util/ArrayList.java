@@ -108,6 +108,11 @@ import jdk.internal.access.SharedSecrets;
 public class ArrayList<E> extends AbstractList<E>
         implements List<E>, RandomAccess, Cloneable, java.io.Serializable
 {
+
+    /**
+     * ArrayList实现了Serializable接口并且声明serialVersionUID
+     * 表明ArrayList是一个可序列化的对象，可以使用Bundle进行传递
+     */
     private static final long serialVersionUID = 8683452581122892189L;
 
     /**
@@ -124,6 +129,8 @@ public class ArrayList<E> extends AbstractList<E>
      * Shared empty array instance used for default sized empty instances. We
      * distinguish this from EMPTY_ELEMENTDATA to know how much to inflate when
      * first element is added.
+     *
+     * ArrayList的底层是由数组实现的，数组的默认大小为10
      */
     private static final Object[] DEFAULTCAPACITY_EMPTY_ELEMENTDATA = {};
 
@@ -145,6 +152,10 @@ public class ArrayList<E> extends AbstractList<E>
     /**
      * Constructs an empty list with the specified initial capacity.
      *
+     * ArrayList的有参构造函数，传入的参数是数组的大小
+     *
+     * 如果预先可以知道或者能够估计出ArrayList中数组的个数，需要传入参数指定数组的大小
+     *
      * @param  initialCapacity  the initial capacity of the list
      * @throws IllegalArgumentException if the specified initial capacity
      *         is negative
@@ -162,6 +173,11 @@ public class ArrayList<E> extends AbstractList<E>
 
     /**
      * Constructs an empty list with an initial capacity of ten.
+     *
+     * ArrayList的无参构造函数
+     *
+     * 首件将默认大小的数组DEFAULTCAPACITY_EMPTY_ELEMENTDATA赋值给elementData。然后根据插入数据记录的个数和当前数组的大小size比较，
+     * 不停调用Arrays.copyOf()方法扩展ArrayList的大小，对性能产生影响
      */
     public ArrayList() {
         this.elementData = DEFAULTCAPACITY_EMPTY_ELEMENTDATA;
@@ -313,6 +329,8 @@ public class ArrayList<E> extends AbstractList<E>
      * More formally, returns the lowest index {@code i} such that
      * {@code Objects.equals(o, get(i))},
      * or -1 if there is no such index.
+     *
+     * 获取对象在数组ArrayList中的索引位置，如果数组中没有这样的对象就返回-1
      */
     public int indexOf(Object o) {
         return indexOfRange(o, 0, size);
@@ -491,6 +509,14 @@ public class ArrayList<E> extends AbstractList<E>
     /**
      * Appends the specified element to the end of this list.
      *
+     * 首先无论是指定索引位置index还是在List集合的末尾执行add()操作，都会先确认ArrayList的当前数组空间是否能够插入数据
+     *
+     * ArrayList默认每次自增50%的大小然后和满足需要的minCapacity比较，如果不能够满足数组大小的要求，就将数组的大小size扩充至满足
+     * 需要的数组数组大小minCapacity
+     *
+     * 如果是默认的从队尾插入，就从数组末尾向后移动一位，然后赋值。如果是指定索引位置并且从中间插入，就需要调用System.arraycopy()方法
+     * 将从索引位置开始的数据均向后移动一位，再开始在指定的索引位置插入
+     *
      * @param e element to be appended to this list
      * @return {@code true} (as specified by {@link Collection#add})
      */
@@ -527,6 +553,9 @@ public class ArrayList<E> extends AbstractList<E>
      * Removes the element at the specified position in this list.
      * Shifts any subsequent elements to the left (subtracts one from their
      * indices).
+     *
+     * 首先进行边界检查，检查传入的索引位置index是否超过当前数组的大小，如果超过就抛出异常。
+     * 如果index的值在数组范围内，就将index之后的数据整体向前移动一位，将最后一位的值清空。
      *
      * @param index the index of the element to be removed
      * @return the element that was removed from the list
@@ -638,6 +667,9 @@ public class ArrayList<E> extends AbstractList<E>
      * (if such an element exists).  Returns {@code true} if this list
      * contained the specified element (or equivalently, if this list
      * changed as a result of the call).
+     *
+     * 这里传入了一个对象，会进行indexOf的操作，将对象拷贝类一份进行遍历查找，寻找当前的数组ArrayList中是否存在这个对象
+     * 如果数组ArrayList中存在这个对象就调用fastRemove()方法进行删除
      *
      * @param o element to be removed from this list, if present
      * @return {@code true} if this list contained the specified element
