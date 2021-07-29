@@ -1609,6 +1609,8 @@ public final class Integer extends Number implements Comparable<Integer> {
      * <li>ceil(log<sub>2</sub>(x)) = {@code 32 - numberOfLeadingZeros(x - 1)}
      * </ul>
      *
+     * 返回无符号整型数i的最高非零位的前面的0的个数，包括符号位上的0
+     *
      * @param i the value whose number of leading zeros is to be computed
      * @return the number of zero bits preceding the highest-order
      *     ("leftmost") one-bit in the two's complement binary representation

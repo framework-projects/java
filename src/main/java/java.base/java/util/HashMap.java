@@ -25,6 +25,8 @@
 
 package java.util;
 
+import jdk.internal.access.SharedSecrets;
+
 import java.io.IOException;
 import java.io.InvalidObjectException;
 import java.io.Serializable;
@@ -34,7 +36,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import jdk.internal.access.SharedSecrets;
 
 /**
  * Hash table based implementation of the {@code Map} interface.  This
@@ -254,6 +255,8 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * than 2 and should be at least 8 to mesh with assumptions in
      * tree removal about conversion back to plain bins upon
      * shrinkage.
+     *
+     * 桶存储的数据链表长度大于8时，每个桶中的数据转换为红黑树结构存储
      */
     static final int TREEIFY_THRESHOLD = 8;
 
@@ -261,6 +264,8 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * The bin count threshold for untreeifying a (split) bin during a
      * resize operation. Should be less than TREEIFY_THRESHOLD, and at
      * most 6 to mesh with shrinkage detection under removal.
+     *
+     * 桶存储的数据红黑树结构中树的节点数量小于6时，每个桶中的数据还原为链表结构存储
      */
     static final int UNTREEIFY_THRESHOLD = 6;
 
@@ -269,6 +274,11 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * (Otherwise the table is resized if too many nodes in a bin.)
      * Should be at least 4 * TREEIFY_THRESHOLD to avoid conflicts
      * between resizing and treeification thresholds.
+     *
+     * HashMap容器中某个箱子bin在链表结构转换为红黑树结构时还要满足键值对的数量大于等于4倍的链表结构转换为红黑树结构的数量，也就是
+     * 键值对的数量大于等于64才会发生结构转换
+     *
+     * 目的是为了避免HashMap扩容resizing和链表结构转换红黑树结构treeification之间的冲突
      */
     static final int MIN_TREEIFY_CAPACITY = 64;
 
@@ -333,6 +343,9 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * cheapest possible way to reduce systematic lossage, as well as
      * to incorporate impact of the highest bits that would otherwise
      * never be used in index calculations because of table bounds.
+     *
+     * 计算hash值
+     * 这里获取hash值后，又进行一次异或运算，目的是为了减少hash碰撞
      */
     static final int hash(Object key) {
         int h;
@@ -374,6 +387,8 @@ public class HashMap<K,V> extends AbstractMap<K,V>
 
     /**
      * Returns a power of two size for the given target capacity.
+     *
+     * 返回大于等于输入参数的最小的2的整数幂次方的值
      */
     static final int tableSizeFor(int cap) {
         int n = -1 >>> Integer.numberOfLeadingZeros(cap - 1);
@@ -387,17 +402,24 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * necessary. When allocated, length is always a power of two.
      * (We also tolerate length zero in some operations to allow
      * bootstrapping mechanics that are currently not needed.)
+     *
+     * 存储hash值的数组
+     * 第一次使用时初始化，长度总是2的整数幂次方
      */
     transient Node<K,V>[] table;
 
     /**
      * Holds cached entrySet(). Note that AbstractMap fields are used
      * for keySet() and values().
+     *
+     * 存储实际的键值对
      */
     transient Set<Map.Entry<K,V>> entrySet;
 
     /**
      * The number of key-value mappings contained in this map.
+     *
+     * HashMap中元素的数量
      */
     transient int size;
 
@@ -407,11 +429,18 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * the HashMap or otherwise modify its internal structure (e.g.,
      * rehash).  This field is used to make iterators on Collection-views of
      * the HashMap fail-fast.  (See ConcurrentModificationException).
+     *
+     * 对HashMap进行结构化操作的计数器
+     * 结构化操作包括扩容和更改HashMap结构的操作
      */
     transient int modCount;
 
     /**
      * The next size value at which to resize (capacity * load factor).
+     *
+     * threshold = (capacity * load factor)
+     *
+     * 用于判断是否进行扩容的界值
      *
      * @serial
      */
@@ -423,6 +452,8 @@ public class HashMap<K,V> extends AbstractMap<K,V>
 
     /**
      * The load factor for the hash table.
+     *
+     * 负载因子
      *
      * @serial
      */
@@ -449,6 +480,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
             throw new IllegalArgumentException("Illegal load factor: " +
                                                loadFactor);
         this.loadFactor = loadFactor;
+        // 将threshold的值设置为大于等于初始容量大小的最小的2的整数幂次方的值
         this.threshold = tableSizeFor(initialCapacity);
     }
 
@@ -563,13 +595,17 @@ public class HashMap<K,V> extends AbstractMap<K,V>
         Node<K,V>[] tab; Node<K,V> first, e; int n; K k;
         if ((tab = table) != null && (n = tab.length) > 0 &&
             (first = tab[(n - 1) & hash]) != null) {
+            // HashMap不为空
             if (first.hash == hash && // always check first node
                 ((k = first.key) == key || (key != null && key.equals(k))))
+                // 根据key的hash值定位到数组中的位置后，获取第一个元素就是要找的元素
                 return first;
             if ((e = first.next) != null) {
                 if (first instanceof TreeNode)
+                    // 如果是红黑树结构，就在红黑树结构中查找
                     return ((TreeNode<K,V>)first).getTreeNode(hash, key);
                 do {
+                    // 如果是链表结构，遍历链表，查询要找的对象
                     if (e.hash == hash &&
                         ((k = e.key) == key || (key != null && key.equals(k))))
                         return e;
@@ -620,18 +656,26 @@ public class HashMap<K,V> extends AbstractMap<K,V>
     final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
                    boolean evict) {
         Node<K,V>[] tab; Node<K,V> p; int n, i;
+        // 初始化的HashMap中的table为null，所以这里的tab也是null
         if ((tab = table) == null || (n = tab.length) == 0)
+            // 如果是初始化HashMap中的tab，在这里调用resize()进行数组的初始化
             n = (tab = resize()).length;
+        // 数组中的tab位是否为空，也就是数组中的位置后面有没有挂载链表，是否存在数据
         if ((p = tab[i = (n - 1) & hash]) == null)
+            // 数组中的tab位为空时，直接创建node节点对象来挂载数据
             tab[i] = newNode(hash, key, value, null);
         else {
+            // 数组中的tab位不为空，也就是tab中已经存在数据了，就进行链表的构建
             Node<K,V> e; K k;
             if (p.hash == hash &&
                 ((k = p.key) == key || (key != null && key.equals(k))))
+                // key值相同的情况
                 e = p;
             else if (p instanceof TreeNode)
+                // 结构是红黑树的情况
                 e = ((TreeNode<K,V>)p).putTreeVal(this, tab, hash, key, value);
             else {
+                // 链表结构，并且已经超过一条数据
                 for (int binCount = 0; ; ++binCount) {
                     if ((e = p.next) == null) {
                         p.next = newNode(hash, key, value, null);
@@ -646,6 +690,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                 }
             }
             if (e != null) { // existing mapping for key
+                // key相同时就更新value值
                 V oldValue = e.value;
                 if (!onlyIfAbsent || oldValue == null)
                     e.value = value;
@@ -654,6 +699,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
             }
         }
         ++modCount;
+        // 当size的值大于阈值threshold时，此时说明Entry的数量较多，哈希冲突严重，需要进行扩容
         if (++size > threshold)
             resize();
         afterNodeInsertion(evict);
@@ -676,11 +722,13 @@ public class HashMap<K,V> extends AbstractMap<K,V>
         int newCap, newThr = 0;
         if (oldCap > 0) {
             if (oldCap >= MAXIMUM_CAPACITY) {
+                // 如果数组容量达到最大值则不再进行扩容，将阈值设置为容量最大值，并且返回原数组
                 threshold = Integer.MAX_VALUE;
                 return oldTab;
             }
             else if ((newCap = oldCap << 1) < MAXIMUM_CAPACITY &&
                      oldCap >= DEFAULT_INITIAL_CAPACITY)
+                // 将当前数组容量增大1倍,也就是容量变为当前数组的2倍
                 newThr = oldThr << 1; // double threshold
         }
         else if (oldThr > 0) // initial capacity was placed in threshold
@@ -694,11 +742,14 @@ public class HashMap<K,V> extends AbstractMap<K,V>
             newThr = (newCap < MAXIMUM_CAPACITY && ft < (float)MAXIMUM_CAPACITY ?
                       (int)ft : Integer.MAX_VALUE);
         }
+        // 设置新的阈值
         threshold = newThr;
         @SuppressWarnings({"rawtypes","unchecked"})
+        // 第一次初始化时创建新的数组，扩容时也会创建新的数组
         Node<K,V>[] newTab = (Node<K,V>[])new Node[newCap];
         table = newTab;
         if (oldTab != null) {
+            // 遍历原HashMap中的所有数组，移入新数组中的对应位置，完成扩容操作
             for (int j = 0; j < oldCap; ++j) {
                 Node<K,V> e;
                 if ((e = oldTab[j]) != null) {
@@ -713,6 +764,10 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                         Node<K,V> next;
                         do {
                             next = e.next;
+                            /*
+                             * 将当前的hash值和数组的长度进行逻辑与运算
+                             * 根据运算结果是否为0来判断元素位置是否进行变化
+                             */
                             if ((e.hash & oldCap) == 0) {
                                 if (loTail == null)
                                     loHead = e;
@@ -734,6 +789,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                         }
                         if (hiTail != null) {
                             hiTail.next = null;
+                            // 原数组中索引位置index和原数组长度之后就是新数组中索引index的位置
                             newTab[j + oldCap] = hiHead;
                         }
                     }
@@ -750,10 +806,13 @@ public class HashMap<K,V> extends AbstractMap<K,V>
     final void treeifyBin(Node<K,V>[] tab, int hash) {
         int n, index; Node<K,V> e;
         if (tab == null || (n = tab.length) < MIN_TREEIFY_CAPACITY)
+            // 如果数组为空或者容量小于MIN_TREEIFY_CAPACITY时，不进行转换，而是进行resize()扩容
             resize();
         else if ((e = tab[index = (n - 1) & hash]) != null) {
             TreeNode<K,V> hd = null, tl = null;
+            // 循环遍历链表,转换为红黑树结构
             do {
+                // 根据链表的节点创建红黑树的节点
                 TreeNode<K,V> p = replacementTreeNode(e, null);
                 if (tl == null)
                     hd = p;
