@@ -35,6 +35,9 @@
 
 package java.util.concurrent;
 
+import jdk.internal.misc.Unsafe;
+import jdk.internal.misc.VM;
+
 import java.io.ObjectStreamField;
 import java.security.AccessControlContext;
 import java.util.Random;
@@ -48,8 +51,6 @@ import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 import java.util.stream.StreamSupport;
-import jdk.internal.misc.Unsafe;
-import jdk.internal.misc.VM;
 
 /**
  * A random number generator isolated to the current thread.  Like the
@@ -161,10 +162,13 @@ public class ThreadLocalRandom extends Random {
      */
     static final void localInit() {
         int p = probeGenerator.addAndGet(PROBE_INCREMENT);
+        // 跳过p为0的值
         int probe = (p == 0) ? 1 : p; // skip 0
         long seed = mix64(seeder.getAndAdd(SEEDER_INCREMENT));
+        // 获取当前线程
         Thread t = Thread.currentThread();
         U.putLong(t, SEED, seed);
+        // 将probe的值更新为probeGenerator的值
         U.putInt(t, PROBE, probe);
     }
 

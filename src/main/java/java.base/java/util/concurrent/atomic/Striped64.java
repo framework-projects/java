@@ -120,10 +120,19 @@ abstract class Striped64 extends Number {
      *
      * JVM intrinsics note: It would be possible to use a release-only
      * form of CAS here, if it were provided.
+     *
+     * 为了提高性能，使用注解jdk.internal.vm.annotation.Contended，避免伪共享
      */
     @jdk.internal.vm.annotation.Contended static final class Cell {
+        /**
+         * 保存需要累加的值
+         */
         volatile long value;
         Cell(long x) { value = x; }
+
+        /**
+         * 使用VarHandle类的CAS来更新value的值
+         */
         final boolean cas(long cmp, long val) {
             return VALUE.compareAndSet(this, cmp, val);
         }
@@ -154,17 +163,24 @@ abstract class Striped64 extends Number {
 
     /**
      * Table of cells. When non-null, size is a power of 2.
+     * 存放元素cell的Hash表，大小为2的整数次幂
      */
     transient volatile Cell[] cells;
 
     /**
      * Base value, used mainly when there is no contention, but also as
      * a fallback during table initialization races. Updated via CAS.
+     *
+     * 基础值:
+     * - 在没有竞争的情况下，累加的数通过CAS累加到base上
+     * - 在数组cells初始化过程中时，数组中的元素cell不可用。此时累加的数会尝试通过CAS累加到base上
      */
     transient volatile long base;
 
     /**
      * Spinlock (locked via CAS) used when resizing and/or creating Cells.
+     * 自旋锁，通过CAS加锁
+     * 用于创建和扩容数组cells的Hash表
      */
     transient volatile int cellsBusy;
 
@@ -228,46 +244,117 @@ abstract class Striped64 extends Number {
     final void longAccumulate(long x, LongBinaryOperator fn,
                               boolean wasUncontended) {
         int h;
+
+        /*
+         * 获取当前线程的threadLocalRandomProbe的值作为hash的值，如果当前线程的threadLocalRandomProbe的值为0，说明当前线程是
+         * 第一次进入该方法，就强制设置线程的threadLocalRandomProbe的值为ThreadLocalRandom类的成员静态私有变量probeGenerator的值。
+         * 需要注意的是，如果threadLocalRandomProbe的值为0，表示新的线程开始参与cell争用的情况:
+         * - 当前线程还未参与cell争用。可能是数组cells还没有完成初始化，进到当前方法就是为了初始化数组cells后来进行争用的，是第一次对
+         * base执行CAS操作失败的情况
+         * - 执行add()方法时，对数组cells中某个位置的cell对象的第一次CAS操作执行失败，wasUncontended设置为fasle，会在这里将
+         * wasUncontended重新设置为true。
+         * 只要是已经参与cell争用后操作的线程的threadLocalRandomProbe的值都不为0
+         */
         if ((h = getProbe()) == 0) {
+            // ThreadLocalRandom类强制初始化
             ThreadLocalRandom.current(); // force initialization
+            // 设置h的值为0x9e3779b9
             h = getProbe();
+            // 将没有争用的标识设置为true
             wasUncontended = true;
         }
+        /**
+         * CAS操作冲突标识
+         * 表示当前线程根据hash的值对数组cells中指定位置的cell对象，执行CAS累加操作时是否与其余的线程发生了冲突，导致CAS操作失败
+         * - true : 表示发生冲突，导致CAS操作失败
+         * - false : 表示没有发生冲突
+         */
         boolean collide = false;                // True if last slot nonempty
         done: for (;;) {
             Cell[] cs; Cell c; int n; long v;
+            /*
+             * 这里包含以下三个操作情况:
+             * - 处理数组cells中已经正常初始化的情况。这个操作用来处理add()方法中的条件3和条件4的情况
+             * - 处理数组cells中没有初始化或者数组cells的长度为0的情况。这个操作用来处理add()方法中的条件1和条件2的情况
+             * - 处理数组cells中没有初始化完成，且其余线程正在执行对数组cells的初始化操作，也就是cellBusy为1的情况。此时尝试通过CAS
+             * 操作将值累加到base上
+             */
+            // 处理数组cells中已经正常初始化的情况
             if ((cs = cells) != null && (n = cs.length) > 0) {
                 if ((c = cs[(n - 1) & h]) == null) {
+                    /*
+                     * 处理add()方法中的条件3。当前线程根据hash的值寻找到数组cells中指定位置为null，说明没有线程在这个位置上设置过
+                     * 值，不存在争用的情况，可以直接使用。这是可以使用x值作为初始值创建一个新的cell对象，对数组cells使用cellsBusy
+                     * 加锁，然后将这个新的cell对象放到位置cells[threadLocalRandomProbe % cells.length上]
+                     */
                     if (cellsBusy == 0) {       // Try to attach new Cell
+                        // 将需要累加的值作为初始值创建一个新的cell对象
                         Cell r = new Cell(x);   // Optimistically create
+                        // 如果cellBusy值为无锁状态0，就通过casCellBusy()方法执行CAS操作将cellBusy设置为加锁状态1
                         if (cellsBusy == 0 && casCellsBusy()) {
                             try {               // Recheck under lock
                                 Cell[] rs; int m, j;
+                                // 重新检查数组cells不为null，数组的长度大于0,并且当前线程根据hash的值对数组cells中的指定位置为null
                                 if ((rs = cells) != null &&
                                     (m = rs.length) > 0 &&
                                     rs[j = (m - 1) & h] == null) {
+                                    // 将新的cell对象放置到数组cells中null的位置
                                     rs[j] = r;
                                     break done;
                                 }
                             } finally {
+                                // 将cellBusy设置为无锁状态0
                                 cellsBusy = 0;
                             }
                             continue;           // Slot is now non-empty
                         }
                     }
+                    // 这里表示cellBusy为加锁状态1，存在线程正在更改数组cells，这时的CAS操作会产生冲突，此时将collide的值设置为false
                     collide = false;
                 }
+
+                /*
+                 * 如果add()方法中的条件4通过CAS操作设置数组cells中cells[threadLocalRandomProbe % cells.length]位置上的对象cell
+                 * 对象的value值为v+x失败，说明存在争用的情况，这时将wasUncontended设置为true。后面重新计算一个新的probe值作为
+                 * hash的值，然后重新执行循环
+                 */
                 else if (!wasUncontended)       // CAS already known to fail
+                    // 将没有争用的标识设置为true，然后在后面重新计算一个probe值，重新执行循环
                     wasUncontended = true;      // Continue after rehash
+
+                /*
+                 * 存在新的线程参与争用的情况，处理第一次进入当前方法时threadLocalRandomProbe的值为0的情况
+                 * 也就是当前线程第一次参与cell争用的CAS操作执行失败，这里尝试将x值累加到cells[threadLocalRandomProbe % cells.length]
+                 * 位置的value上，如果累加成功直接退出循环
+                 */
                 else if (c.cas(v = c.value,
                                (fn == null) ? v + x : fn.applyAsLong(v, x)))
                     break;
+
+                /*
+                 * 如果上面一个处理线程争用时累加操作执行失败，这时如果数组cells的长度超过的最大的系统CPU内核的数量，或者是数组cells
+                 * 已经完成了扩容操作，就将冲突标识collide设置为false。后面重新计算一个probe值作为hash的值，然后重新执行循环
+                 */
                 else if (n >= NCPU || cells != cs)
                     collide = false;            // At max size or stale
+
+                /*
+                 * 如果没有发生CAS操作的冲突，就将冲突标识collide设置为true。后面重新计算一个probe值作为hash的值。然后重新执行循环
+                 */
                 else if (!collide)
+                    /*
+                     * 设置冲突标识的值为true，表示发生了冲突。需要后面重新计算一个probe值作为hash的值，然后重新执行循环
+                     * 如果重新执行循环时，仍然走到这个分支时，冲突标识collide已经设置为true，这个分支的判断条件!collide判断为
+                     * false，就跳过这个分支，进入下一个分支判断执行
+                     */
                     collide = true;
+
+                /*
+                 * 扩容数组cells，参与cell对象争用的线程两次都失败，并且符合扩容的条件
+                 */
                 else if (cellsBusy == 0 && casCellsBusy()) {
                     try {
+                        // 判断数组cells是否已经进行过扩容
                         if (cells == cs)        // Expand table unless stale
                             cells = Arrays.copyOf(cs, n << 1);
                     } finally {
@@ -276,21 +363,27 @@ abstract class Striped64 extends Number {
                     collide = false;
                     continue;                   // Retry with expanded table
                 }
+                // 重新计算一个probe值作为hash的值
                 h = advanceProbe(h);
             }
+            // 处理数组cells已经正常初始化的情况。如果数组cells还没有初始化或者数组cells的长度为0，会首先尝试获取cellBusy锁
             else if (cellsBusy == 0 && cells == cs && casCellsBusy()) {
                 try {                           // Initialize table
                     if (cells == cs) {
+                        // 初始化数组cells，初始容量为2
                         Cell[] rs = new Cell[2];
+                        // 根据累加的值x创建一个新的cell对象。通过hash的值和1相与h & 1，将对象放到数组cells第0个或者第1个位置上
                         rs[h & 1] = new Cell(x);
                         cells = rs;
                         break done;
                     }
                 } finally {
+                    // 设置锁标识cellsBusy为无锁状态0
                     cellsBusy = 0;
                 }
             }
             // Fall back on using base
+            // 如果以上操作都失败，就尝试将需要累加的值x累加到base上
             else if (casBase(v = base,
                              (fn == null) ? v + x : fn.applyAsLong(v, x)))
                 break done;

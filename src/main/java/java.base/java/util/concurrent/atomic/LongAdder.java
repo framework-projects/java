@@ -84,11 +84,44 @@ public class LongAdder extends Striped64 implements Serializable {
      */
     public void add(long x) {
         Cell[] cs; long b, v; int m; Cell c;
+        /*
+         * 如果满足以下两个条件之一，就继续执行:
+         * - cells数组不为null，也就是存在争用的情况。因为不存在争用时，cells数组一定为null，因为只有对base的CAS操作失败后，
+         * 才会开始初始化数组cells
+         * - casBase()方法执行失败。此时说明第一次争用产生冲突，需要对数组cells初始化
+         *
+         * caseBase()方法中通过UNSAFE类的CAS设置成员变量base的值为要累加的值
+         * caseBase()方法执行成功的前提是不存在竞争，此时数组cells数组并没有用到，对象为null。由此可见，不存在争用时，
+         * 处理方式和AtomicLong类似，使用CAS进行累加
+         */
         if ((cs = cells) != null || !casBase(b = base, b + x)) {
+            /**
+             * uncontended判断数组cells中，当前线程要做CAS累加操作的某个元素是否存在争用，CAS操作失败则表示存在争用:
+             * - uncontended的值为false则代表存在争用
+             * - uncontended的值为true则代表不存在争用
+             */
             boolean uncontended = true;
+            /*
+             * 如果满足以下四个条件之一，就继续执行:
+             * - cs == null : 数组cells没有初始化。如果满足条件直接继续执行，进行数组cells的初始化
+             * - (m = cs.length - 1) < 0 : 数组cells的长度为0。表示数组cells没有初始化，初始化成功后数组cells的长度为2
+             * - c = cs[getProbe() & m]) == null : 数组cells初始化后并且长度不为0，就通过getProbe()方法获取当前线程Thread的
+             * threadLocalRandomProbe变量的值，初始为0，然后执行threadLocalRandomProbe & (cells.length - 1)，相当于
+             * m % cells.length。如果cells[threadLocalRandomProbe % cells.length]位置为null，说明这个位置上没有线程做过
+             * 累加操作，此时就在这个位置上创建一个新的Cell对象继续执行
+             * - !(uncontended = c.cas(v = c.value, v + x)) : 尝试对cells[threadLocalRandomProbe % cells.length]位置的
+             * Cell对象中的value值执行累加操作并返回操作结果，如果失败，就继续执行，重新计算一个threadLocalRandomProbe的值继续进行
+             * 累加操作
+             */
             if (cs == null || (m = cs.length - 1) < 0 ||
                 (c = cs[getProbe() & m]) == null ||
                 !(uncontended = c.cas(v = c.value, v + x)))
+                /*
+                 * 在以下三种情况下会执行longAccumulate()方法:
+                 * - 数组cells没有初始化。也就是上面的前两个条件
+                 * - 当前线程需要操作的数组cells中的根据hash的值确定的位置还没有其余的线程做过累加操作。也就是上面的第三个条件
+                 * - 存在争用冲突。也就是上面的第四个条件
+                 */
                 longAccumulate(x, null, uncontended);
         }
     }
